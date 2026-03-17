@@ -1,0 +1,5 @@
+.git
+dist/
+*.egg-info/
+__pycache__/
+*.pyc

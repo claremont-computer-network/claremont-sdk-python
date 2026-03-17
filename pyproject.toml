@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "claremont"
+version = "0.1.0"
+description = "A minimal Python SDK for the Claremont Computer Network API"
+readme = "README.md"
+requires-python = ">=3.7"
+dependencies = []
+
+[project.scripts]
+claremont = "claremont.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/claremont-computer-network/claremont-sdk-python"
+Repository = "https://github.com/claremont-computer-network/claremont-sdk-python"
