@@ -1,16 +1,23 @@
 import argparse
 import sys
-from pathlib import Path
+
+try:
+    from importlib.metadata import version
+    def get_version():
+        return version("claremont")
+except ImportError:
+    from pathlib import Path
+    def get_version():
+        try:
+            pyproject = Path(__file__).parent.parent.parent / "pyproject.toml"
+            for line in pyproject.read_text().splitlines():
+                if line.startswith("version ="):
+                    return line.split("=")[1].strip().strip('"')
+        except:
+            pass
+        return "unknown"
 
 from claremont import Claremont
-
-
-def get_version():
-    pyproject = Path(__file__).parent.parent.parent / "pyproject.toml"
-    for line in pyproject.read_text().splitlines():
-        if line.startswith("version ="):
-            return line.split("=")[1].strip().strip('"')
-    return "unknown"
 
 
 def login(args):
