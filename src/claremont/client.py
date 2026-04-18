@@ -37,7 +37,7 @@ except ImportError:
     USE_REQUESTS = False
 
 
-__version__ = "2.0.0"
+__version__ = "0.2.0"
 __all__ = ["Claremont", "Tunnel", "Secret", "ClaremontError", "AuthError", "SecretError"]
 
 
@@ -117,6 +117,7 @@ class Claremont:
     def __init__(
         self,
         email: Optional[str] = None,
+        password: Optional[str] = None,
         api_key: Optional[str] = None,
         *,
         key_server_url: Optional[str] = None,
@@ -125,6 +126,7 @@ class Claremont:
         retries: int = 3,
     ):
         self.email = email or os.environ.get("CLAREMONT_EMAIL")
+        self._password = password or os.environ.get("CLAREMONT_PASSWORD")
         self._api_key = api_key or os.environ.get("CLAREMONT_API_KEY")
         self.key_server_url = (
             key_server_url
@@ -139,6 +141,7 @@ class Claremont:
         self.timeout = timeout
         self.retries = retries
         self._token: Optional[str] = None
+        self._authenticated = False
 
     # -- bootstrap ----------------------------------------------------------
 
@@ -230,15 +233,41 @@ class Claremont:
 
     def authenticate(self) -> Dict[str, Any]:
         """
-        Authenticate with the SecureRelay control plane.
+        Authenticate with the Claremont API.
 
-        If no *api_key* was provided at construction the SDK automatically
-        fetches it encrypted from the Key Server.
+        Supports three methods:
+        1. Email + password: login with email and password
+        2. API key: use existing API key (X-API-Key header)
+        3. Key Server: fetch API key from Key Server using email
+
+        Prefer email/password if both are available.
         """
+        # Method 1: Email + password login
+        if self.email and self._password:
+            result = self._request(
+                "POST",
+                f"{self.relay_url}/api/auth/login",
+                data={"email": self.email, "password": self._password}
+            )
+            self._token = result.get("access_token") or result.get("token")
+            self._authenticated = True
+            return result
+
+        # Method 2: API key auth
         self._ensure_api_key()
         result = self._request("POST", f"{self.relay_url}/api/auth/login", data={})
         self._token = result.get("access_token") or result.get("token")
+        self._authenticated = True
         return result
+
+    def login(self, password: str) -> Dict[str, Any]:
+        """
+        Login with email and password.
+        """
+        if not self.email:
+            raise AuthError("Email required for password login")
+        self._password = password
+        return self.authenticate()
 
     # -- Tunnels ------------------------------------------------------------
 
