@@ -23,11 +23,18 @@ from __future__ import annotations
 import os
 import time
 import json
+import ipaddress
 import urllib.request
 import urllib.error
 import urllib.parse
 from typing import Optional, Any, Dict, List
 from dataclasses import dataclass, field
+
+try:
+    import requests
+    USE_REQUESTS = True
+except ImportError:
+    USE_REQUESTS = False
 
 
 __version__ = "2.0.0"
@@ -169,25 +176,42 @@ class Claremont:
         elif self._api_key:
             hdrs["X-API-Key"] = self._api_key
 
-        body = json.dumps(data).encode() if data else None
-        req = urllib.request.Request(url, data=body, headers=hdrs, method=method)
+        if USE_REQUESTS:
+            last_err: Optional[Exception] = None
+            for attempt in range(1, self.retries + 1):
+                try:
+                    resp = requests.request(
+                        method, url, json=data, headers=hdrs,
+                        timeout=self.timeout, verify=True
+                    )
+                    resp.raise_for_status()
+                    return resp.json() if resp.text else {}
+                except requests.exceptions.RequestException as exc:
+                    last_err = exc
+                    if getattr(exc, "response", None) and exc.response.status_code == 401:
+                        self._token = None
+                    time.sleep(min(2 ** attempt, 8))
+            raise ClaremontError(f"Request failed after {self.retries} retries: {last_err}")
+        else:
+            body = json.dumps(data).encode() if data else None
+            req = urllib.request.Request(url, data=body, headers=hdrs, method=method)
 
-        last_err: Optional[Exception] = None
-        for attempt in range(1, self.retries + 1):
-            try:
-                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                    raw = resp.read().decode()
-                    return json.loads(raw) if raw else {}
-            except urllib.error.HTTPError as exc:
-                last_err = exc
-                if exc.code == 401:
-                    self._token = None
-                time.sleep(min(2 ** attempt, 8))
-            except urllib.error.URLError as exc:
-                last_err = exc
-                time.sleep(min(2 ** attempt, 8))
+            last_err = None
+            for attempt in range(1, self.retries + 1):
+                try:
+                    with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                        raw = resp.read().decode()
+                        return json.loads(raw) if raw else {}
+                except urllib.error.HTTPError as exc:
+                    last_err = exc
+                    if exc.code == 401:
+                        self._token = None
+                    time.sleep(min(2 ** attempt, 8))
+                except urllib.error.URLError as exc:
+                    last_err = exc
+                    time.sleep(min(2 ** attempt, 8))
 
-        raise ClaremontError(f"Request failed after {self.retries} retries: {last_err}")
+            raise ClaremontError(f"Request failed after {self.retries} retries: {last_err}")
 
     # -- Key Server ---------------------------------------------------------
 
@@ -338,3 +362,83 @@ class Claremont:
             except Exception:
                 pass
             self._token = None
+
+    # ---------------------------------------------------------------------------
+    # BYOIP Support (from secure-relay)
+    # ---------------------------------------------------------------------------
+
+    BYOIP_NETWORK = ipaddress.IPv4Network("23.142.172.0/24")
+
+    def configure_byoip(self, ip_address: str, domain: str = None) -> Dict[str, Any]:
+        """Configure BYOIP binding for anycast configurations."""
+        self._ensure_api_key()
+        ipaddress.IPv4Address(ip_address)
+        return self._request("POST", f"{self.relay_url}/api/byoip/configure", data={
+            "ip_address": ip_address,
+            "domain": domain,
+        })
+
+    def list_byoip_ranges(self) -> List[Dict[str, Any]]:
+        """List available BYOIP ranges."""
+        self._ensure_api_key()
+        return self._request("GET", f"{self.relay_url}/api/byoip/ranges").get("ranges", [])
+
+    def configure_exit_node(self, enabled: bool = True) -> Dict[str, Any]:
+        """Configure this as an exit node for traffic routing."""
+        self._ensure_api_key()
+        return self._request("POST", f"{self.relay_url}/api/exit-node/configure", data={
+            "enabled": enabled,
+        })
+
+    def configure_subnet_router(self, network: str, description: str = None) -> Dict[str, Any]:
+        """Expose a local network to remote clients."""
+        self._ensure_api_key()
+        net = ipaddress.IPv4Network(network, strict=False)
+        return self._request("POST", f"{self.relay_url}/api/subnet/configure", data={
+            "network": str(net),
+            "description": description,
+        })
+
+    # ---------------------------------------------------------------------------
+    # Telemetry (base)
+    # ---------------------------------------------------------------------------
+
+    def track_event(self, event_name: str, properties: Optional[Dict[str, Any]] = None) -> None:
+        """Track an analytics event."""
+        self._ensure_api_key()
+        self._request("POST", f"{self.relay_url}/api/telemetry/events", data={
+            "event": event_name,
+            "properties": properties or {},
+        })
+
+    def track_tunnel_created(self, tunnel_id: str, local_port: int, remote_port: int) -> None:
+        """Track tunnel creation event."""
+        self.track_event("tunnel_created", {
+            "tunnel_id": tunnel_id,
+            "local_port": local_port,
+            "remote_port": remote_port,
+        })
+
+    def track_tunnel_closed(self, tunnel_id: str) -> None:
+        """Track tunnel closure event."""
+        self.track_event("tunnel_closed", {"tunnel_id": tunnel_id})
+
+    # ---------------------------------------------------------------------------
+    # Simplified API (from simplify-client)
+    # ---------------------------------------------------------------------------
+
+    def register(self, email: str) -> Dict[str, Any]:
+        """Register a new account."""
+        return self._request("POST", f"{self.relay_url}/api/auth/register", data={
+            "email": email,
+        })
+
+    def list_all(self) -> List[Tunnel]:
+        """List all tunnels (simplified API)."""
+        return self.list_tunnels()
+
+    def status(self, tunnel_id: str = None) -> Dict[str, Any]:
+        """Get tunnel status (simplified API)."""
+        if tunnel_id:
+            return self._request("GET", f"{self.relay_url}/api/tunnels/{tunnel_id}")
+        return self._request("GET", f"{self.relay_url}/api/status")
