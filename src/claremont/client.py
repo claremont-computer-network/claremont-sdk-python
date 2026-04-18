@@ -129,12 +129,12 @@ class Claremont:
         self.key_server_url = (
             key_server_url
             or os.environ.get("CLAREMONT_KEY_SERVER_URL")
-            or "https://keys.claremontcomputer.net"
+            or "https://api.claremontcomputer.net"
         )
         self.relay_url = (
             relay_url
             or os.environ.get("CLAREMONT_RELAY_URL")
-            or "https://securerelay.claremontcomputer.net"
+            or "https://api.claremontcomputer.net"
         )
         self.timeout = timeout
         self.retries = retries
