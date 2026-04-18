@@ -24,7 +24,7 @@ def login(args):
     client = Claremont(api_key=args.email, base_url=args.url)
     result = client.login()
     print(f"Logged in as: {result.get('email')}")
-    print(f"Token: {result.get('token')}")
+    print(f"Token: {result.get('access_token') or result.get('token')}")
     print("\nToken saved to CLAREMONT_TOKEN environment variable")
     sys.exit(0)
 

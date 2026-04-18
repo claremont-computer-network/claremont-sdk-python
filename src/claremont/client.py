@@ -237,8 +237,7 @@ class Claremont:
         """
         self._ensure_api_key()
         result = self._request("POST", f"{self.relay_url}/api/auth/login", data={})
-        if "token" in result:
-            self._token = result["token"]
+        self._token = result.get("access_token") or result.get("token")
         return result
 
     # -- Tunnels ------------------------------------------------------------
