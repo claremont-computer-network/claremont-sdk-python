@@ -555,3 +555,23 @@ class Claremont:
     def list_telemetry(self) -> List[Dict[str, Any]]:
         """List telemetry records (admin only)."""
         return self._request("GET", f"{self.relay_url}/api/admin/telemetry")
+
+    def admin_status(self) -> Dict[str, Any]:
+        """Get admin API status (admin only)."""
+        return self._request("GET", f"{self.relay_url}/api/admin/status")
+
+    def list_secrets(self) -> List[Dict[str, Any]]:
+        """List auth tokens/secrets (admin only)."""
+        return self._request("GET", f"{self.relay_url}/api/admin/secrets")
+
+    def list_api_keys(self) -> List[Dict[str, Any]]:
+        """List API keys (admin only)."""
+        return self._request("GET", f"{self.relay_url}/api/admin/keys")
+
+    def create_api_key(self, name: str = "admin-key") -> Dict[str, Any]:
+        """Create an API key (admin only)."""
+        return self._request("POST", f"{self.relay_url}/api/admin/keys", data={"name": name})
+
+    def delete_api_key(self, key_id: int) -> Dict[str, Any]:
+        """Delete an API key (admin only)."""
+        return self._request("DELETE", f"{self.relay_url}/api/admin/keys/{key_id}")
