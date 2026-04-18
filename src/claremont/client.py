@@ -532,3 +532,26 @@ class Claremont:
             req = urllib.request.Request(url, headers=hdrs)
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 return resp.read()
+
+    # ---------------------------------------------------------------------------
+    # Admin API (requires admin access)
+    # ---------------------------------------------------------------------------
+
+    def list_users(self) -> List[Dict[str, Any]]:
+        """List all users (admin only)."""
+        return self._request("GET", f"{self.relay_url}/api/admin/users")
+
+    def create_user(self, email: str, password: str = "default") -> Dict[str, Any]:
+        """Create a new user (admin only)."""
+        return self._request("POST", f"{self.relay_url}/api/admin/users", data={
+            "email": email,
+            "password": password,
+        })
+
+    def delete_user(self, user_id: int) -> Dict[str, Any]:
+        """Delete a user (admin only)."""
+        return self._request("DELETE", f"{self.relay_url}/api/admin/users/{user_id}")
+
+    def list_telemetry(self) -> List[Dict[str, Any]]:
+        """List telemetry records (admin only)."""
+        return self._request("GET", f"{self.relay_url}/api/admin/telemetry")
