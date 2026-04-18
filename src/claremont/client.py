@@ -247,7 +247,7 @@ class Claremont:
             result = self._request(
                 "POST",
                 f"{self.relay_url}/api/auth/login",
-                data={"email": self.email, "password": self._password}
+                json={"email": self.email, "password": self._password}
             )
             self._token = result.get("access_token") or result.get("token")
             self._authenticated = True
@@ -255,7 +255,7 @@ class Claremont:
 
         # Method 2: API key auth
         self._ensure_api_key()
-        result = self._request("POST", f"{self.relay_url}/api/auth/login", data={})
+        result = self._request("POST", f"{self.relay_url}/api/auth/login", json={})
         self._token = result.get("access_token") or result.get("token")
         self._authenticated = True
         return result
