@@ -575,3 +575,52 @@ class Claremont:
     def delete_api_key(self, key_id: int) -> Dict[str, Any]:
         """Delete an API key (admin only)."""
         return self._request("DELETE", f"{self.relay_url}/api/admin/keys/{key_id}")
+
+    def create_user_no_password(self, email: str, role: str = "user") -> Dict[str, Any]:
+        """Create user without password - requires password reset on first login."""
+        return self._request("POST", f"{self.relay_url}/api/admin/users/no-password", data={
+            "email": email,
+            "role": role,
+        })
+
+    def admin_upload_file(self, user_email: str, file_path: str) -> Dict[str, Any]:
+        """Upload a file for a user (admin only)."""
+        import os
+        if not os.path.exists(file_path):
+            raise ClaremontError(f"File not found: {file_path}")
+        
+        name = os.path.basename(file_path)
+        with open(file_path, "rb") as f:
+            content = f.read()
+        
+        url = f"{self.relay_url}/api/admin/uploads/{user_email}"
+        import io
+        
+        boundary = "----ClaremontBoundary"
+        body = io.BytesIO()
+        body.write(f"--{boundary}\r\n".encode())
+        body.write(f'Content-Disposition: form-data; name="file"; filename="{name}"\r\n'.encode())
+        body.write(b"Content-Type: application/octet-stream\r\n\r\n")
+        body.write(content)
+        body.write(f"\r\n--{boundary}--\r\n".encode())
+        
+        hdrs = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+        if self._token:
+            hdrs["Authorization"] = f"Bearer {self._token}"
+        
+        if USE_REQUESTS:
+            resp = requests.post(url, data=body.getvalue(), headers=hdrs, timeout=self.timeout)
+            resp.raise_for_status()
+            return resp.json()
+        else:
+            req = urllib.request.Request(url, data=body.getvalue(), headers=hdrs, method="POST")
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                return json.loads(resp.read().decode())
+
+    def admin_list_user_files(self, user_email: str) -> List[Dict[str, Any]]:
+        """List files for a user (admin only)."""
+        return self._request("GET", f"{self.relay_url}/api/admin/files/{user_email}")
+
+    def admin_delete_user_file(self, user_email: str, filename: str) -> Dict[str, Any]:
+        """Delete a file for a user (admin only)."""
+        return self._request("DELETE", f"{self.relay_url}/api/admin/files/{user_email}/{filename}")
