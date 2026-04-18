@@ -624,3 +624,26 @@ class Claremont:
     def admin_delete_user_file(self, user_email: str, filename: str) -> Dict[str, Any]:
         """Delete a file for a user (admin only)."""
         return self._request("DELETE", f"{self.relay_url}/api/admin/files/{user_email}/{filename}")
+
+    def admin_get_chats(self, user_email: str) -> List[Dict[str, Any]]:
+        """List all chat messages for a user (admin only)."""
+        return self._request("GET", f"{self.relay_url}/api/admin/chat/{user_email}")
+
+    def admin_create_chat(self, user_email: str, message: str, timestamp: str = None) -> Dict[str, Any]:
+        """Create a chat message for a user (admin only)."""
+        data = {"message": message}
+        if timestamp:
+            data["timestamp"] = timestamp
+        return self._request("POST", f"{self.relay_url}/api/admin/chat/{user_email}", json=data)
+
+    def admin_get_chat(self, user_email: str, message_id: int) -> Dict[str, Any]:
+        """Get a specific chat message (admin only)."""
+        return self._request("GET", f"{self.relay_url}/api/admin/chat/{user_email}/{message_id}")
+
+    def admin_update_chat(self, user_email: str, message_id: int, message: str) -> Dict[str, Any]:
+        """Update a chat message (admin only)."""
+        return self._request("PUT", f"{self.relay_url}/api/admin/chat/{user_email}/{message_id}", json={"message": message})
+
+    def admin_delete_chat(self, user_email: str, message_id: int) -> Dict[str, Any]:
+        """Delete a chat message (admin only)."""
+        return self._request("DELETE", f"{self.relay_url}/api/admin/chat/{user_email}/{message_id}")
