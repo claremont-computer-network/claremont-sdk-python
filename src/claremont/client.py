@@ -470,3 +470,65 @@ class Claremont:
         if tunnel_id:
             return self._request("GET", f"{self.relay_url}/api/tunnels/{tunnel_id}")
         return self._request("GET", f"{self.relay_url}/api/status")
+
+    # ---------------------------------------------------------------------------
+    # Downloads/Uploads
+    # ---------------------------------------------------------------------------
+
+    def list_downloads(self) -> List[Dict[str, Any]]:
+        """List available downloads."""
+        return self._request("GET", f"{self.relay_url}/api/downloads")
+
+    def upload_file(self, file_path: str, *, filename: Optional[str] = None) -> Dict[str, Any]:
+        """Upload a file."""
+        import os
+        if not os.path.exists(file_path):
+            raise ClaremontError(f"File not found: {file_path}")
+
+        name = filename or os.path.basename(file_path)
+        with open(file_path, "rb") as f:
+            content = f.read()
+
+        url = f"{self.relay_url}/api/upload"
+        import io
+        from urllib.parse import urlencode
+
+        # Build multipart request manually
+        boundary = "----ClaremontBoundary"
+        body = io.BytesIO()
+        body.write(f"--{boundary}\r\n".encode())
+        body.write(f'Content-Disposition: form-data; name="file"; filename="{name}"\r\n'.encode())
+        body.write(b"Content-Type: application/octet-stream\r\n\r\n")
+        body.write(content)
+        body.write(f"\r\n--{boundary}--\r\n".encode())
+
+        hdrs = {
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+        }
+        if self._token:
+            hdrs["Authorization"] = f"Bearer {self._token}"
+
+        if USE_REQUESTS:
+            resp = requests.post(url, data=body.getvalue(), headers=hdrs, timeout=self.timeout)
+            resp.raise_for_status()
+            return resp.json()
+        else:
+            req = urllib.request.Request(url, data=body.getvalue(), headers=hdrs, method="POST")
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                return json.loads(resp.read().decode())
+
+    def download_file(self, filename: str) -> bytes:
+        """Download a file."""
+        url = f"{self.relay_url}/api/download/{filename}"
+        hdrs = {}
+        if self._token:
+            hdrs["Authorization"] = f"Bearer {self._token}"
+
+        if USE_REQUESTS:
+            resp = requests.get(url, headers=hdrs, timeout=self.timeout)
+            resp.raise_for_status()
+            return resp.content
+        else:
+            req = urllib.request.Request(url, headers=hdrs)
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                return resp.read()
