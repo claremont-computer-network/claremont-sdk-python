@@ -212,7 +212,7 @@ The SDK supports three authentication methods:
 1. **Email + Password** (recommended for interactive use):
 ```python
 client = Claremont(email="user@example.com", password="password123")
-result = client.authenticate()  # Returns Bearer token
+result = client.authenticate()  # Returns Bearer token (JWT)
 ```
 
 2. **API Key** (via Key Server):
@@ -224,6 +224,14 @@ result = client.authenticate()  # Fetches key from Key Server
 3. **Direct API Key**:
 ```python
 client = Claremont(api_key="cws_...")
+```
+
+#### JWT Support
+
+As of this version, the CWS API issues JWT tokens (JSON Web Tokens) for authentication. The SDK handles these transparently as Bearer tokens. Any service can verify the token signature using the public JWKS endpoint:
+
+```bash
+curl https://api.claremontcomputer.net/.well-known/jwks.json
 ```
 
 ## Troubleshooting
