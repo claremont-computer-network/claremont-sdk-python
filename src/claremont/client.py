@@ -170,6 +170,7 @@ class Claremont:
         url: str,
         *,
         data: Optional[Dict[str, Any]] = None,
+        json: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         hdrs = dict(headers or {})
@@ -178,13 +179,16 @@ class Claremont:
             hdrs["Authorization"] = f"Bearer {self._token}"
         elif self._api_key:
             hdrs["X-API-Key"] = self._api_key
+        
+        # Use json= if provided, else data=
+        body = json if json is not None else data
 
         if USE_REQUESTS:
             last_err: Optional[Exception] = None
             for attempt in range(1, self.retries + 1):
                 try:
                     resp = requests.request(
-                        method, url, json=data, headers=hdrs,
+                        method, url, json=body, headers=hdrs,
                         timeout=self.timeout, verify=True
                     )
                     resp.raise_for_status()
