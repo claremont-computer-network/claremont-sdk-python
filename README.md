@@ -116,10 +116,144 @@ Make a POST request.
 response = client.post("/api/endpoint", data={"key": "value"})
 ```
 
+## Admin API Methods
+
+The SDK supports admin-only operations. These require:
+- Admin role (set in `role.txt` file or database)
+- `ADMIN_ENABLED=true` environment variable on CWS server
+
+### User Management
+
+```python
+# List all users (admin only)
+users = client.list_users()
+
+# Create a new user
+user = client.create_user("new@example.com", "password123")
+
+# Delete a user
+client.delete_user(user_id)
+
+# Create user without password (must reset on first login)
+client.create_user_no_password("user@example.com", "user")
+```
+
+### Chat Management
+
+```python
+# List all chat messages for a user
+chats = client.admin_get_chats("user@example.com")
+
+# Create a chat message for a user
+chat = client.admin_create_chat("user@example.com", "Hello!", "2026-04-18T12:00:00")
+
+# Get a specific chat message
+chat = client.admin_get_chat("user@example.com", chat_id)
+
+# Update a chat message
+chat = client.admin_update_chat("user@example.com", chat_id, "Updated message!")
+
+# Delete a chat message
+client.admin_delete_chat("user@example.com", chat_id)
+```
+
+### Other Admin Operations
+
+```python
+# Get admin status
+status = client.admin_status()
+
+# List telemetry
+telemetry = client.list_telemetry()
+
+# List API keys
+keys = client.list_api_keys()
+
+# Create API key
+new_key = client.create_api_key("my-key")
+
+# Delete API key
+client.delete_api_key(key_id)
+
+# Upload file for user
+client.admin_upload_file("user@example.com", "/path/to/file.txt")
+
+# List user's files
+files = client.admin_list_user_files("user@example.com")
+
+# Delete user's file
+client.admin_delete_user_file("user@example.com", "filename.txt")
+```
+
+## Configuration
+
+### Default API URL
+
+The SDK defaults to `https://api.claremontcomputer.net`. You can override:
+
+```python
+client = Claremont(
+    email="user@example.com",
+    password="password123",
+    relay_url="http://ec2-54-89-192-212.compute-1.amazonaws.com:8000"
+)
+```
+
+Or via environment:
+
+```bash
+export CLAREMONT_RELAY_URL="http://ec2-54-89-192-212.compute-1.amazonaws.com:8000"
+```
+
+### Authentication
+
+The SDK supports three authentication methods:
+
+1. **Email + Password** (recommended for interactive use):
+```python
+client = Claremont(email="user@example.com", password="password123")
+result = client.authenticate()  # Returns Bearer token
+```
+
+2. **API Key** (via Key Server):
+```python
+client = Claremont(email="user@example.com")
+result = client.authenticate()  # Fetches key from Key Server
+```
+
+3. **Direct API Key**:
+```python
+client = Claremont(api_key="cws_...")
+```
+
+## Troubleshooting
+
+### DNS Resolution Issue
+
+If `api.claremontcomputer.net` fails to resolve (Cloudflare Tunnel IPv6 issue), use the EC2 endpoint directly:
+
+```python
+client = Claremont(
+    email="user@example.com",
+    password="password123",
+    relay_url="http://ec2-54-89-192-212.compute-1.amazonaws.com:8000"
+)
+```
+
+### 401 Unauthorized
+
+Make sure to call `authenticate()` before making authenticated requests:
+
+```python
+client = Claremont(email="user@example.com", password="password123")
+client.authenticate()  # Must call this first
+chats = client.admin_get_chats("user@example.com")
+```
+
 ## Requirements
 
 - Python 3.7+
-- No external dependencies (uses stdlib only)
+- `requests` library (optional, uses stdlib if not available)
 
 ## License
 
