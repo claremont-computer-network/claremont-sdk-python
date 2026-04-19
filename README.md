@@ -228,11 +228,37 @@ client = Claremont(api_key="cws_...")
 
 #### JWT Support
 
-As of this version, the CWS API issues JWT tokens (JSON Web Tokens) for authentication. The SDK handles these transparently as Bearer tokens. Any service can verify the token signature using the public JWKS endpoint:
+As of this version, the CWS API issues JWT tokens (JSON Web Tokens) for authentication. The SDK handles these transparently as Bearer tokens.
+
+**How JWT works in the SDK:**
+1. When you authenticate via email/password, the SDK receives a JWT from the `/api/auth/login` endpoint
+2. The SDK stores this token and automatically includes it in the `Authorization: Bearer <token>` header for subsequent requests
+3. The CWS API verifies the JWT signature using its private key
+4. Any third-party service can also verify the token using the public JWKS endpoint
+
+**JWT Verification (for third-party services):**
+
+Any service can verify Claremont JWT tokens without calling the Claremont API by using the public JWKS endpoint:
 
 ```bash
+# Get the public key set
 curl https://api.claremontcomputer.net/.well-known/jwks.json
 ```
+
+Example payload structure of a Claremont JWT:
+```json
+{
+  "sub": "user_123",                    // User ID
+  "email": "user@example.com",          // User email
+  "role": "admin",                      // User role
+  "iss": "claremontcomputer.net",       // Issuer
+  "aud": "any",                         // Audience
+  "exp": 1713456000,                    // Expiration (Unix timestamp)
+  "iat": 1713369600                     // Issued at (Unix timestamp)
+}
+```
+
+**Note:** The SDK does not need to verify JWTs itself - it simply passes them through as Bearer tokens to the CWS API, which handles verification.
 
 ## Troubleshooting
 
