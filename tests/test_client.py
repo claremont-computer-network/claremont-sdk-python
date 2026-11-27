@@ -36,29 +36,8 @@ def test_api_key_authentication_checks_user_info(monkeypatch):
     assert calls[0][1].endswith("/api/user/info")
 
 
-def test_register_requires_linkedin_url():
-    client = Claremont()
-    with pytest.raises(AuthError):
-        client.register("user@example.com", "")
-
-
-def test_register_posts_email_and_linkedin_url_without_file(monkeypatch):
-    client = Claremont()
-    calls = []
-
-    def fake_request(method, url, **kwargs):
-        calls.append((method, url, kwargs))
-        return {"status": "ok"}
-
-    monkeypatch.setattr(client, "_request", fake_request)
-    client.register("user@example.com", "https://www.linkedin.com/in/user")
-
-    assert calls[0][0] == "POST"
-    assert calls[0][2]["json"] == {
-        "email": "user@example.com",
-        "linkedin_url": "https://www.linkedin.com/in/user",
-    }
-    assert "files" not in calls[0][2]
+def test_register_is_not_exposed():
+    assert not hasattr(Claremont, "register")
 
 
 def test_logout_clears_credentials(monkeypatch):

@@ -457,15 +457,6 @@ class Claremont:
     # Simplified API (from simplify-client)
     # ---------------------------------------------------------------------------
 
-    def register(self, email: str, linkedin_url: str) -> Dict[str, Any]:
-        """Register with an email and LinkedIn URL; file uploads are not supported."""
-        if not linkedin_url:
-            raise AuthError("A LinkedIn profile URL is required for manual verification")
-        return self._request("POST", f"{self.relay_url}/api/auth/register", json={
-            "email": email,
-            "linkedin_url": linkedin_url,
-        })
-
     def list_all(self) -> List[Tunnel]:
         """List all tunnels (simplified API)."""
         return self.list_tunnels()

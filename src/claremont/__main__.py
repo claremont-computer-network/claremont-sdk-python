@@ -37,15 +37,6 @@ def login(args):
     sys.exit(0)
 
 
-def register(args):
-    client = Claremont(relay_url=args.url)
-    linkedin_url = args.linkedin_url
-    client.register(args.email, linkedin_url)
-    print(f"Registered: {args.email}")
-    print("Your request was sent to the Claremont Computer Network for manual verification.")
-    sys.exit(0)
-
-
 def logout(args):
     client = Claremont(
         bearer_token=args.token or os.environ.get("CLAREMONT_TOKEN"),
@@ -74,11 +65,6 @@ def main():
     login_parser.add_argument("--api-key", help="API key (or set CLAREMONT_API_KEY)")
     login_parser.add_argument("--token", help="Bearer JWT (or set CLAREMONT_TOKEN)")
     login_parser.set_defaults(func=login)
-
-    register_parser = subparsers.add_parser("register", help="Register a new account")
-    register_parser.add_argument("email", help="Email address")
-    register_parser.add_argument("linkedin_url", help="LinkedIn profile URL for manual verification")
-    register_parser.set_defaults(func=register)
 
     logout_parser = subparsers.add_parser("logout", help="Clear local API credentials")
     logout_parser.add_argument("-t", "--token", help="Bearer token to invalidate")

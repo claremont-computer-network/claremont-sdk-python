@@ -55,15 +55,7 @@ client = Claremont(email="user@example.com", password="password123")
 client.authenticate()
 ```
 
-Register for manual verification:
-
-```python
-client = Claremont()
-client.register(
-    email="user@example.com",
-    linkedin_url="https://www.linkedin.com/in/user",
-)
-```
+Registration is web-only. Use <https://claremontcomputer.net/login/register>; the SDK intentionally has no registration method.
 
 ## CLI usage
 
@@ -76,9 +68,6 @@ claremont login --token eyJ...
 
 # Exchange email/password for an API JWT
 claremont login user@example.com --password password123
-
-# Register for manual verification
-claremont register user@example.com https://www.linkedin.com/in/user
 
 # Clear local credentials
 claremont logout
@@ -123,7 +112,6 @@ export CLAREMONT_RELAY_URL="https://api.claremontcomputer.net"
 - `authenticate()` — validates explicit credentials.
 - `login(password)` — exchanges email/password for an API JWT.
 - `logout()` — invalidates a Bearer token and clears local credentials.
-- `register(email, linkedin_url)` — submits a manual-verification request.
 - `list_downloads()` / `download_file(filename)` / `upload_file(file_path)`.
 - `create_tunnel(...)` / `list_tunnels()` / `close_tunnel(...)`.
 - `get_secret(name)` / `list_secrets()`.
