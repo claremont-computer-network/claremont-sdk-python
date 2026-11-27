@@ -1,87 +1,96 @@
 import argparse
+import os
 import sys
 
 try:
     from importlib.metadata import version
+
     def get_version():
         return version("claremont")
 except ImportError:
     from pathlib import Path
+
     def get_version():
         try:
             pyproject = Path(__file__).parent.parent.parent / "pyproject.toml"
             for line in pyproject.read_text().splitlines():
                 if line.startswith("version ="):
                     return line.split("=")[1].strip().strip('"')
-        except:
+        except OSError:
             pass
         return "unknown"
+
 
 from claremont import Claremont
 
 
 def login(args):
-    client = Claremont(api_key=args.email, base_url=args.url)
-    result = client.login()
-    print(f"Logged in as: {result.get('email')}")
-    print(f"Token: {result.get('access_token') or result.get('token')}")
-    print("\nToken saved to CLAREMONT_TOKEN environment variable")
+    client = Claremont(
+        email=args.email or os.environ.get("CLAREMONT_EMAIL"),
+        password=args.password or os.environ.get("CLAREMONT_PASSWORD"),
+        api_key=args.api_key or os.environ.get("CLAREMONT_API_KEY"),
+        bearer_token=args.token or os.environ.get("CLAREMONT_TOKEN"),
+        relay_url=args.url,
+    )
+    result = client.authenticate()
+    print(f"Authenticated: {result.get('email', 'API credential')}")
     sys.exit(0)
 
 
 def register(args):
-    client = Claremont(base_url=args.url)
-    result = client.register(args.email)
-    print(f"Registered: {result.get('email')}")
-    print("Please check your email to verify your account.")
+    client = Claremont(relay_url=args.url)
+    linkedin_url = args.linkedin_url
+    client.register(args.email, linkedin_url)
+    print(f"Registered: {args.email}")
+    print("Your request was sent to the Claremont Computer Network for manual verification.")
     sys.exit(0)
 
 
 def logout(args):
-    import os
-    client = Claremont(base_url=args.url)
-    # Try to get token from env var or stdin
-    token = os.environ.get("CLAREMONT_TOKEN") or getattr(args, 'token', None)
-    if not token:
-        print("Error: No token. Run 'claremont login' first.")
-        sys.exit(1)
-    client._token = token
-    try:
-        client.logout()
-        print("Logged out successfully.")
-    except Exception as e:
-        print(f"Logout failed: {e}")
+    client = Claremont(
+        bearer_token=args.token or os.environ.get("CLAREMONT_TOKEN"),
+        api_key=args.api_key or os.environ.get("CLAREMONT_API_KEY"),
+        relay_url=args.url,
+    )
+    client.logout()
+    print("Logged out successfully.")
     sys.exit(0)
 
 
 def main():
     parser = argparse.ArgumentParser(prog="claremont")
     parser.add_argument("-v", "--version", action="store_true", help="Show version")
-    parser.add_argument("--url", default="http://localhost:8000", help="Base URL for API")
-    
+    parser.add_argument(
+        "--url",
+        default=os.environ.get("CLAREMONT_RELAY_URL", "https://api.claremontcomputer.net"),
+        help="Base URL for the CWS API",
+    )
+
     subparsers = parser.add_subparsers(dest="command", help="Commands")
-    
-    # Login command
-    login_parser = subparsers.add_parser("login", help="Login with email")
-    login_parser.add_argument("email", help="Email address")
+
+    login_parser = subparsers.add_parser("login", help="Authenticate with explicit API credentials")
+    login_parser.add_argument("email", nargs="?", help="Email address for password login")
+    login_parser.add_argument("-p", "--password", help="Password for API login")
+    login_parser.add_argument("--api-key", help="API key (or set CLAREMONT_API_KEY)")
+    login_parser.add_argument("--token", help="Bearer JWT (or set CLAREMONT_TOKEN)")
     login_parser.set_defaults(func=login)
-    
-    # Register command
+
     register_parser = subparsers.add_parser("register", help="Register a new account")
     register_parser.add_argument("email", help="Email address")
+    register_parser.add_argument("linkedin_url", help="LinkedIn profile URL for manual verification")
     register_parser.set_defaults(func=register)
-    
-    # Logout command
-    logout_parser = subparsers.add_parser("logout", help="Logout")
-    logout_parser.add_argument("-t", "--token", help="Token from login")
+
+    logout_parser = subparsers.add_parser("logout", help="Clear local API credentials")
+    logout_parser.add_argument("-t", "--token", help="Bearer token to invalidate")
+    logout_parser.add_argument("--api-key", help="API key to clear")
     logout_parser.set_defaults(func=logout)
-    
+
     args = parser.parse_args()
-    
+
     if args.version:
         print(f"claremont {get_version()}")
         return
-    
+
     if args.command:
         args.func(args)
     else:

@@ -1,21 +1,18 @@
 """
 Claremont SDK for Python
 
-Public client for SecureRelay tunnels, Key Server secrets, and Claremont services.
-API keys are fetched encrypted from the Key Server — never stored in plaintext.
+Public client for Claremont Computer Network services.
+
+API requests require explicit credentials: a Bearer JWT, an API key, or an
+email/password pair that is exchanged for an API JWT. A passwordless browser
+session is never accepted by the API.
 
 Usage:
     pip install claremont
     from claremont import Claremont
 
-    # Authenticate with email + API key (fetched from Key Server)
-    client = Claremont(email="you@claremontcomputer.net")
-
-    # Create an encrypted tunnel
-    tunnel = client.create_tunnel(local_port=8080, remote_host="internal.service")
-
-    # Fetch an encrypted secret
-    stripe_key = client.get_secret("STRIPE_KEY")
+    client = Claremont(api_key="cws_...")
+    print(client.list_downloads())
 """
 
 from __future__ import annotations
@@ -37,7 +34,7 @@ except ImportError:
     USE_REQUESTS = False
 
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = ["Claremont", "Tunnel", "Secret", "ClaremontError", "AuthError", "SecretError"]
 
 
@@ -100,16 +97,18 @@ class Claremont:
     Parameters
     ----------
     email : str, optional
-        Your Claremont email (used as identity for Key Server lookup).
+        Your Claremont email, used with *password* to obtain an API JWT.
+    password : str, optional
+        Your Claremont password, used only for explicit API login.
     api_key : str, optional
-        Direct API key.  If omitted the SDK queries the Key Server
-        using *email* to retrieve it encrypted.
+        API key sent as ``X-Api-Key``.
+    bearer_token : str, optional
+        API-issued JWT sent as ``Authorization: Bearer <token>``.
     key_server_url : str, optional
-        URL of the Claremont Key Server.  Defaults to
-        ``https://keys.claremontcomputer.net``.
+        URL of the Claremont Key Server. Defaults to
+        ``https://api.claremontcomputer.net``.
     relay_url : str, optional
-        URL of the SecureRelay control plane.  Defaults to
-        ``https://securerelay.claremontcomputer.net``.
+        URL of the CWS API. Defaults to ``https://api.claremontcomputer.net``.
     timeout : float
         HTTP request timeout in seconds.
     """
@@ -119,6 +118,7 @@ class Claremont:
         email: Optional[str] = None,
         password: Optional[str] = None,
         api_key: Optional[str] = None,
+        bearer_token: Optional[str] = None,
         *,
         key_server_url: Optional[str] = None,
         relay_url: Optional[str] = None,
@@ -128,6 +128,7 @@ class Claremont:
         self.email = email or os.environ.get("CLAREMONT_EMAIL")
         self._password = password or os.environ.get("CLAREMONT_PASSWORD")
         self._api_key = api_key or os.environ.get("CLAREMONT_API_KEY")
+        self._token = bearer_token or os.environ.get("CLAREMONT_TOKEN")
         self.key_server_url = (
             key_server_url
             or os.environ.get("CLAREMONT_KEY_SERVER_URL")
@@ -140,27 +141,25 @@ class Claremont:
         )
         self.timeout = timeout
         self.retries = retries
-        self._token: Optional[str] = None
         self._authenticated = False
 
     # -- bootstrap ----------------------------------------------------------
 
-    def _ensure_api_key(self) -> None:
-        """Fetch API key from Key Server if not already set."""
+    def _auth_headers(self) -> Dict[str, str]:
+        """Return headers for explicit API credentials only."""
+        if self._token:
+            return {"Authorization": f"Bearer {self._token}"}
         if self._api_key:
-            return
-        if not self.email:
+            return {"X-Api-Key": self._api_key}
+        return {}
+
+    def _require_credentials(self) -> None:
+        """Fail before a request when no explicit API credential is configured."""
+        if not self._token and not self._api_key and not (self.email and self._password):
             raise AuthError(
-                "Provide *email* or set CLAREMONT_EMAIL to fetch your API key "
-                "from the Key Server, or pass *api_key* directly."
+                "Provide bearer_token, api_key, or email+password before calling "
+                "the Claremont API."
             )
-        secret = self._fetch_key_server_secret(self.email)
-        if not secret:
-            raise AuthError(
-                f"No API key found for {self.email} in the Key Server. "
-                "Register at https://keys.claremontcomputer.net first."
-            )
-        self._api_key = secret
 
     # -- HTTP helpers -------------------------------------------------------
 
@@ -175,11 +174,8 @@ class Claremont:
     ) -> Dict[str, Any]:
         hdrs = dict(headers or {})
         hdrs["Content-Type"] = "application/json"
-        if self._token:
-            hdrs["Authorization"] = f"Bearer {self._token}"
-        elif self._api_key:
-            hdrs["X-API-Key"] = self._api_key
-        
+        hdrs.update(self._auth_headers())
+
         # Use json= if provided, else data=
         body = json if json is not None else data
 
@@ -200,8 +196,8 @@ class Claremont:
                     time.sleep(min(2 ** attempt, 8))
             raise ClaremontError(f"Request failed after {self.retries} retries: {last_err}")
         else:
-            body = json.dumps(data).encode() if data else None
-            req = urllib.request.Request(url, data=body, headers=hdrs, method=method)
+            body_bytes = json.dumps(body).encode() if body else None
+            req = urllib.request.Request(url, data=body_bytes, headers=hdrs, method=method)
 
             last_err = None
             for attempt in range(1, self.retries + 1):
@@ -223,7 +219,7 @@ class Claremont:
     # -- Key Server ---------------------------------------------------------
 
     def _fetch_key_server_secret(self, name: str) -> Optional[str]:
-        """Retrieve a secret value from the Key Server."""
+        """Retrieve a Key Server secret. This does not grant API access."""
         url = f"{self.key_server_url}/api/v1/secrets/{name}"
         try:
             req = urllib.request.Request(url, method="GET")
@@ -236,42 +232,46 @@ class Claremont:
     # -- Public API ---------------------------------------------------------
 
     def authenticate(self) -> Dict[str, Any]:
-        """
-        Authenticate with the Claremont API.
+        """Validate explicit API credentials and mark the client authenticated."""
+        if self._token or self._api_key:
+            result = self._request("GET", f"{self.relay_url}/api/user/info")
+            self._authenticated = True
+            return result
 
-        Supports three methods:
-        1. Email + password: login with email and password
-        2. API key: use existing API key (X-API-Key header)
-        3. Key Server: fetch API key from Key Server using email
-
-        Prefer email/password if both are available.
-        """
-        # Method 1: Email + password login
         if self.email and self._password:
             result = self._request(
                 "POST",
                 f"{self.relay_url}/api/auth/login",
-                json={"email": self.email, "password": self._password}
+                json={"email": self.email, "password": self._password},
             )
             self._token = result.get("access_token") or result.get("token")
+            if not self._token:
+                raise AuthError("Login did not return an API token")
             self._authenticated = True
             return result
 
-        # Method 2: API key auth
-        self._ensure_api_key()
-        result = self._request("POST", f"{self.relay_url}/api/auth/login", json={})
-        self._token = result.get("access_token") or result.get("token")
-        self._authenticated = True
-        return result
+        raise AuthError(
+            "Provide bearer_token, api_key, or email+password. "
+            "A passwordless browser session does not authorize API requests."
+        )
 
     def login(self, password: str) -> Dict[str, Any]:
-        """
-        Login with email and password.
-        """
+        """Exchange email and password for an API-issued Bearer JWT."""
         if not self.email:
             raise AuthError("Email required for password login")
         self._password = password
         return self.authenticate()
+
+    def logout(self) -> Dict[str, Any]:
+        """Clear local credentials and invalidate a Bearer token if present."""
+        result: Dict[str, Any] = {}
+        if self._token:
+            result = self._request("POST", f"{self.relay_url}/api/auth/logout")
+        self._token = None
+        self._api_key = None
+        self._password = None
+        self._authenticated = False
+        return result
 
     # -- Tunnels ------------------------------------------------------------
 
@@ -303,7 +303,7 @@ class Claremont:
         -------
         Tunnel
         """
-        self._ensure_api_key()
+        self._require_credentials()
         payload = {
             "local_port": local_port,
             "remote_host": remote_host,
@@ -324,7 +324,7 @@ class Claremont:
 
     def list_tunnels(self) -> List[Tunnel]:
         """List all active tunnels for the authenticated user."""
-        self._ensure_api_key()
+        self._require_credentials()
         result = self._request("GET", f"{self.relay_url}/api/tunnels")
         return [
             Tunnel(
@@ -340,7 +340,7 @@ class Claremont:
 
     def close_tunnel(self, tunnel_id: str) -> Dict[str, Any]:
         """Close an active tunnel."""
-        self._ensure_api_key()
+        self._require_credentials()
         return self._request("DELETE", f"{self.relay_url}/api/tunnels/{tunnel_id}")
 
     # -- Secrets ------------------------------------------------------------
@@ -351,7 +351,7 @@ class Claremont:
 
         The value is returned decrypted.  The SDK never writes secrets to disk.
         """
-        self._ensure_api_key()
+        self._require_credentials()
         url = f"{self.key_server_url}/api/v1/secrets/{name}"
         result = self._request("GET", url)
         return Secret(
@@ -365,7 +365,7 @@ class Claremont:
 
     def list_secrets(self, *, category: Optional[str] = None, environment: str = "production") -> List[Secret]:
         """List available secret names (values are **not** returned)."""
-        self._ensure_api_key()
+        self._require_credentials()
         params = {"environment": environment}
         if category:
             params["category"] = category
@@ -388,12 +388,10 @@ class Claremont:
         return self
 
     def __exit__(self, *exc: Any) -> None:
-        if self._token:
-            try:
-                self._request("POST", f"{self.relay_url}/api/auth/logout")
-            except Exception:
-                pass
-            self._token = None
+        try:
+            self.logout()
+        except Exception:
+            pass
 
     # ---------------------------------------------------------------------------
     # BYOIP Support (from secure-relay)
@@ -403,7 +401,7 @@ class Claremont:
 
     def configure_byoip(self, ip_address: str, domain: str = None) -> Dict[str, Any]:
         """Configure BYOIP binding for anycast configurations."""
-        self._ensure_api_key()
+        self._require_credentials()
         ipaddress.IPv4Address(ip_address)
         return self._request("POST", f"{self.relay_url}/api/byoip/configure", data={
             "ip_address": ip_address,
@@ -412,19 +410,19 @@ class Claremont:
 
     def list_byoip_ranges(self) -> List[Dict[str, Any]]:
         """List available BYOIP ranges."""
-        self._ensure_api_key()
+        self._require_credentials()
         return self._request("GET", f"{self.relay_url}/api/byoip/ranges").get("ranges", [])
 
     def configure_exit_node(self, enabled: bool = True) -> Dict[str, Any]:
         """Configure this as an exit node for traffic routing."""
-        self._ensure_api_key()
+        self._require_credentials()
         return self._request("POST", f"{self.relay_url}/api/exit-node/configure", data={
             "enabled": enabled,
         })
 
     def configure_subnet_router(self, network: str, description: str = None) -> Dict[str, Any]:
         """Expose a local network to remote clients."""
-        self._ensure_api_key()
+        self._require_credentials()
         net = ipaddress.IPv4Network(network, strict=False)
         return self._request("POST", f"{self.relay_url}/api/subnet/configure", data={
             "network": str(net),
@@ -437,7 +435,7 @@ class Claremont:
 
     def track_event(self, event_name: str, properties: Optional[Dict[str, Any]] = None) -> None:
         """Track an analytics event."""
-        self._ensure_api_key()
+        self._require_credentials()
         self._request("POST", f"{self.relay_url}/api/telemetry/events", data={
             "event": event_name,
             "properties": properties or {},
@@ -459,10 +457,13 @@ class Claremont:
     # Simplified API (from simplify-client)
     # ---------------------------------------------------------------------------
 
-    def register(self, email: str) -> Dict[str, Any]:
-        """Register a new account."""
-        return self._request("POST", f"{self.relay_url}/api/auth/register", data={
+    def register(self, email: str, linkedin_url: str) -> Dict[str, Any]:
+        """Register with an email and LinkedIn URL; file uploads are not supported."""
+        if not linkedin_url:
+            raise AuthError("A LinkedIn profile URL is required for manual verification")
+        return self._request("POST", f"{self.relay_url}/api/auth/register", json={
             "email": email,
+            "linkedin_url": linkedin_url,
         })
 
     def list_all(self) -> List[Tunnel]:
@@ -506,11 +507,11 @@ class Claremont:
         body.write(content)
         body.write(f"\r\n--{boundary}--\r\n".encode())
 
+        self._require_credentials()
         hdrs = {
             "Content-Type": f"multipart/form-data; boundary={boundary}",
         }
-        if self._token:
-            hdrs["Authorization"] = f"Bearer {self._token}"
+        hdrs.update(self._auth_headers())
 
         if USE_REQUESTS:
             resp = requests.post(url, data=body.getvalue(), headers=hdrs, timeout=self.timeout)
@@ -523,10 +524,10 @@ class Claremont:
 
     def download_file(self, filename: str) -> bytes:
         """Download a file."""
+        self._require_credentials()
         url = f"{self.relay_url}/api/download/{filename}"
         hdrs = {}
-        if self._token:
-            hdrs["Authorization"] = f"Bearer {self._token}"
+        hdrs.update(self._auth_headers())
 
         if USE_REQUESTS:
             resp = requests.get(url, headers=hdrs, timeout=self.timeout)
@@ -608,10 +609,10 @@ class Claremont:
         body.write(content)
         body.write(f"\r\n--{boundary}--\r\n".encode())
         
+        self._require_credentials()
         hdrs = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
-        if self._token:
-            hdrs["Authorization"] = f"Bearer {self._token}"
-        
+        hdrs.update(self._auth_headers())
+
         if USE_REQUESTS:
             resp = requests.post(url, data=body.getvalue(), headers=hdrs, timeout=self.timeout)
             resp.raise_for_status()
