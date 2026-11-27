@@ -2,292 +2,171 @@
 
 A minimal Python SDK for the Claremont Computer Network API.
 
+[![CI](https://github.com/claremont-computer-network/claremont-sdk-python/actions/workflows/ci.yml/badge.svg)](https://github.com/claremont-computer-network/claremont-sdk-python/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/claremont)](https://pypi.org/project/claremont/)
+
+Full CWS documentation: <https://claremontcomputer.net/docs>
+
 ## Installation
 
 ```bash
 pip install claremont
 ```
 
-## CLI Usage
+## Authentication
 
-```bash
-# Register a new account
-claremont register user@example.com
+CWS API requests require explicit credentials. A passwordless browser session
+is **not** API authentication.
 
-# Login
-claremont login user@example.com
+- `Authorization: Bearer <JWT>` — API-issued JWT from `POST /api/auth/login`
+  with a verified email and password, or a JWT passed directly to the SDK.
+- `X-Api-Key: <key>` — API key created in the CWS dashboard.
 
-# Logout (requires token from login)
-claremont logout -t YOUR_TOKEN
+Registration uses an email address and a LinkedIn profile URL. Registration
+does not accept file uploads.
 
-# Show version
-claremont -v
+## Python usage
 
-# Specify custom URL
-claremont --url https://api.claremontcomputer.net login user@example.com
-```
-
-## Python Usage
+Use an API key:
 
 ```python
 from claremont import Claremont
 
-# Initialize with API key
-client = Claremont(api_key="your-email")
-
-# Login to get Bearer token
-client.login()
-
-# Make authenticated requests
-response = client.get("/api/some-endpoint")
-
-# Logout
-client.logout()
-```
-
-## Configuration
-
-### Environment Variables
-
-```bash
-export CLAREMONT_API_KEY="your-email"
-export CLAREMONT_BASE_URL="https://api.claremontcomputer.net"
-```
-
-### Programmatic
-
-```python
-client = Claremont(
-    api_key="your-email",
-    base_url="https://api.claremontcomputer.net",
-    timeout=30.0
-)
-```
-
-## API Reference
-
-### Claremont(api_key=None, base_url=None, timeout=30.0)
-
-- `api_key` (str, optional): Email for authentication
-- `base_url` (str, optional): Base URL for the API. Defaults to `https://api.claremontcomputer.net`
-- `timeout` (float, optional): Request timeout in seconds. Defaults to 30.0
-
-### Methods
-
-#### `login(api_key=None)`
-
-Login with email and obtain a Bearer token.
-
-```python
-client.login("your-email")
-# Or use the one from constructor
-client.login()
-```
-
-#### `logout()`
-
-Logout and invalidate the Bearer token.
-
-```python
-client.logout()
-```
-
-#### `register(email)`
-
-Register a new account. Requires email verification.
-
-```python
-client.register("user@example.com")
-```
-
-#### `get(path, **kwargs)`
-
-Make a GET request.
-
-```python
-response = client.get("/api/endpoint")
-```
-
-#### `post(path, **kwargs)`
-
-Make a POST request.
-
-```python
-response = client.post("/api/endpoint", data={"key": "value"})
-```
-
-## Admin API Methods
-
-The SDK supports admin-only operations. These require:
-- Admin role (set in `role.txt` file or database)
-- `ADMIN_ENABLED=true` environment variable on CWS server
-
-### User Management
-
-```python
-# List all users (admin only)
-users = client.list_users()
-
-# Create a new user
-user = client.create_user("new@example.com", "password123")
-
-# Delete a user
-client.delete_user(user_id)
-
-# Create user without password (must reset on first login)
-client.create_user_no_password("user@example.com", "user")
-```
-
-### Chat Management
-
-```python
-# List all chat messages for a user
-chats = client.admin_get_chats("user@example.com")
-
-# Create a chat message for a user
-chat = client.admin_create_chat("user@example.com", "Hello!", "2026-04-18T12:00:00")
-
-# Get a specific chat message
-chat = client.admin_get_chat("user@example.com", chat_id)
-
-# Update a chat message
-chat = client.admin_update_chat("user@example.com", chat_id, "Updated message!")
-
-# Delete a chat message
-client.admin_delete_chat("user@example.com", chat_id)
-```
-
-### Other Admin Operations
-
-```python
-# Get admin status
-status = client.admin_status()
-
-# List telemetry
-telemetry = client.list_telemetry()
-
-# List API keys
-keys = client.list_api_keys()
-
-# Create API key
-new_key = client.create_api_key("my-key")
-
-# Delete API key
-client.delete_api_key(key_id)
-
-# Upload file for user
-client.admin_upload_file("user@example.com", "/path/to/file.txt")
-
-# List user's files
-files = client.admin_list_user_files("user@example.com")
-
-# Delete user's file
-client.admin_delete_user_file("user@example.com", "filename.txt")
-```
-
-## Configuration
-
-### Default API URL
-
-The SDK defaults to `https://api.claremontcomputer.net`. You can override:
-
-```python
-client = Claremont(
-    email="user@example.com",
-    password="password123",
-    relay_url="http://ec2-54-89-192-212.compute-1.amazonaws.com:8000"
-)
-```
-
-Or via environment:
-
-```bash
-export CLAREMONT_RELAY_URL="http://ec2-54-89-192-212.compute-1.amazonaws.com:8000"
-```
-
-### Authentication
-
-The SDK supports three authentication methods:
-
-1. **Email + Password** (recommended for interactive use):
-```python
-client = Claremont(email="user@example.com", password="password123")
-result = client.authenticate()  # Returns Bearer token (JWT)
-```
-
-2. **API Key** (via Key Server):
-```python
-client = Claremont(email="user@example.com")
-result = client.authenticate()  # Fetches key from Key Server
-```
-
-3. **Direct API Key**:
-```python
 client = Claremont(api_key="cws_...")
+client.authenticate()
+print(client.list_downloads())
 ```
 
-#### JWT Support
+Use a Bearer JWT:
 
-As of this version, the CWS API issues JWT tokens (JSON Web Tokens) for authentication. The SDK handles these transparently as Bearer tokens.
+```python
+from claremont import Claremont
 
-**How JWT works in the SDK:**
-1. When you authenticate via email/password, the SDK receives a JWT from the `/api/auth/login` endpoint
-2. The SDK stores this token and automatically includes it in the `Authorization: Bearer <token>` header for subsequent requests
-3. The CWS API verifies the JWT signature using its private key
-4. Any third-party service can also verify the token using the public JWKS endpoint
+client = Claremont(bearer_token="eyJ...")
+print(client.list_downloads())
+```
 
-**JWT Verification (for third-party services):**
+Exchange an email and password for an API JWT:
 
-Any service can verify Claremont JWT tokens without calling the Claremont API by using the public JWKS endpoint:
+```python
+from claremont import Claremont
+
+client = Claremont(email="user@example.com", password="password123")
+client.authenticate()
+```
+
+Registration is web-only. Use <https://claremontcomputer.net/login/register>; the SDK intentionally has no registration method.
+
+## CLI usage
 
 ```bash
-# Get the public key set
+# Authenticate with an API key
+claremont login --api-key cws_...
+
+# Authenticate with a Bearer JWT
+claremont login --token eyJ...
+
+# Exchange email/password for an API JWT
+claremont login user@example.com --password password123
+
+# Clear local credentials
+claremont logout
+
+# Show version
+claremont -v
+```
+
+## Configuration
+
+```python
+client = Claremont(
+    api_key="cws_...",
+    relay_url="https://api.claremontcomputer.net",
+    timeout=30.0,
+)
+```
+
+Environment variables:
+
+```bash
+export CLAREMONT_API_KEY="cws_..."
+export CLAREMONT_TOKEN="eyJ..."
+export CLAREMONT_EMAIL="user@example.com"
+export CLAREMONT_PASSWORD="password123"
+export CLAREMONT_RELAY_URL="https://api.claremontcomputer.net"
+```
+
+## API reference
+
+### `Claremont(...)`
+
+- `email` — used with `password` to obtain an API JWT.
+- `password` — used only for explicit API login.
+- `api_key` — sent as `X-Api-Key`.
+- `bearer_token` — sent as `Authorization: Bearer <token>`.
+- `relay_url` — defaults to `https://api.claremontcomputer.net`.
+- `timeout` / `retries` — request behavior.
+
+### Core methods
+
+- `authenticate()` — validates explicit credentials.
+- `login(password)` — exchanges email/password for an API JWT.
+- `logout()` — invalidates a Bearer token and clears local credentials.
+- `list_downloads()` / `download_file(filename)` / `upload_file(file_path)`.
+- `create_tunnel(...)` / `list_tunnels()` / `close_tunnel(...)`.
+- `get_secret(name)` / `list_secrets()`.
+
+### Admin methods
+
+Admin methods require an admin role and `ADMIN_ENABLED=true` on CWS.
+
+```python
+client.list_users()
+client.create_user("new@example.com", "password123")
+client.delete_user(user_id)
+client.list_api_keys()
+client.create_api_key("my-key")
+client.list_telemetry()
+client.admin_get_chats("user@example.com")
+```
+
+## JWT verification
+
+Third-party services can verify JWTs using the public JWKS endpoint:
+
+```bash
 curl https://api.claremontcomputer.net/.well-known/jwks.json
 ```
 
-Example payload structure of a Claremont JWT:
-```json
-{
-  "sub": "user_123",                    // User ID
-  "email": "user@example.com",          // User email
-  "role": "admin",                      // User role
-  "iss": "claremontcomputer.net",       // Issuer
-  "aud": "any",                         // Audience
-  "exp": 1713456000,                    // Expiration (Unix timestamp)
-  "iat": 1713369600                     // Issued at (Unix timestamp)
-}
+The SDK does not verify JWTs locally; it passes them to CWS as Bearer tokens.
+
+## Development and releases
+
+Install development dependencies and run tests:
+
+```bash
+pip install -e '.[dev]'
+pytest
+python -m build
 ```
 
-**Note:** The SDK does not need to verify JWTs itself - it simply passes them through as Bearer tokens to the CWS API, which handles verification.
+Releases are tag-driven:
 
-## Troubleshooting
+1. Update `version` in `pyproject.toml` and `__version__` in `src/claremont/client.py`.
+2. Merge the change to `main`.
+3. Push a matching tag, for example `git tag v0.3.0 && git push origin v0.3.0`.
+4. CI must pass before `.github/workflows/release.yml` creates a GitHub Release
+   and publishes to PyPI via Trusted Publishing.
 
-### DNS Resolution Issue
+Configure PyPI Trusted Publishing once with these values:
 
-If `api.claremontcomputer.net` fails to resolve (Cloudflare Tunnel IPv6 issue), use the EC2 endpoint directly:
+- Owner: `claremont-computer-network`
+- Repository: `claremont-sdk-python`
+- Workflow: `release.yml`
+- Environment: `pypi`
 
-```python
-client = Claremont(
-    email="user@example.com",
-    password="password123",
-    relay_url="http://ec2-54-89-192-212.compute-1.amazonaws.com:8000"
-)
-```
-
-### 401 Unauthorized
-
-Make sure to call `authenticate()` before making authenticated requests:
-
-```python
-client = Claremont(email="user@example.com", password="password123")
-client.authenticate()  # Must call this first
-chats = client.admin_get_chats("user@example.com")
-```
-
-## Requirements
-
-- Python 3.7+
-- `requests` library (optional, uses stdlib if not available)
+GitHub Packages does not provide a native Python/PyPI registry; PyPI is the
+canonical package registry and GitHub Releases hold the built artifacts.
 
 ## License
 
